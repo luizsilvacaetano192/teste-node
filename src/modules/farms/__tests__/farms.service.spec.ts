@@ -5,7 +5,7 @@ import { Farm } from '../entities/farm.entity';
 import { Producer } from '../../producers/entities/producer.entity';
 import { LoggerService } from '../../../shared/logger/logger.service';
 import { RedisService } from '../../redis/redis.service';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { CreateFarmDto } from '../dto/create-farm.dto';
 import { UpdateFarmDto } from '../dto/update-farm.dto';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
@@ -29,7 +29,12 @@ describe('FarmsService', () => {
     vegetationArea: 500.50,
     producer: {
       id: 'producer-123',
-      name: 'Produtor Teste'
+      name: 'Produtor Teste',
+      documentNumber: '12345678901',
+      documentType: DocumentType.CPF,
+      farms: [],
+      createdAt: new Date('2023-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2023-01-15T00:00:00.000Z'),
     } as Producer,
     crops: []
   };
@@ -51,7 +56,11 @@ describe('FarmsService', () => {
         {
           provide: getRepositoryToken(Farm),
           useValue: {
-            create: jest.fn().mockReturnValue(mockFarm),
+            create: jest.fn().mockImplementation((dto) => ({
+              ...mockFarm,
+              ...dto,
+              id: mockFarm.id,
+            })),
             save: jest.fn().mockResolvedValue(mockFarm),
             findOne: jest.fn().mockResolvedValue(mockFarm),
             find: jest.fn().mockResolvedValue([mockFarm]),
@@ -112,12 +121,22 @@ describe('FarmsService', () => {
 
     it('should create a farm successfully', async () => {
       const result = await service.create(createDto);
+      
       expect(result).toEqual(mockFarm);
-      expect(producerRepository.findOne).toHaveBeenCalledWith({ where: { id: createDto.producerId } });
-      expect(farmRepository.create).toHaveBeenCalledWith(expect.objectContaining({
-        ...createDto,
+      expect(producerRepository.findOne).toHaveBeenCalledWith({ 
+        where: { id: createDto.producerId } 
+      });
+      
+      expect(farmRepository.create).toHaveBeenCalledWith({
+        name: createDto.name,
+        city: createDto.city,
+        state: createDto.state,
+        totalArea: createDto.totalArea,
+        arableArea: createDto.arableArea,
+        vegetationArea: createDto.vegetationArea,
         producer: mockProducer,
-      }));
+      });
+      
       expect(redisService.set).toHaveBeenCalledWith(
         `farm:${mockFarm.id}`,
         JSON.stringify(mockFarm)
@@ -125,7 +144,11 @@ describe('FarmsService', () => {
     });
 
     it('should throw BadRequestException if areas are invalid', async () => {
-      const invalidDto = { ...createDto, arableArea: 1000, vegetationArea: 600 };
+      const invalidDto = { 
+        ...createDto, 
+        arableArea: 1000, 
+        vegetationArea: 600 
+      };
       await expect(service.create(invalidDto)).rejects.toThrow(BadRequestException);
     });
 
@@ -149,7 +172,12 @@ describe('FarmsService', () => {
           totalPages: 1,
           currentPage: 1,
         },
-        links: expect.anything(),
+        links: {
+          first: expect.any(String),
+          previous: '',
+          next: '',
+          last: expect.any(String),
+        },
       });
     });
   });
@@ -216,7 +244,7 @@ describe('FarmsService', () => {
       const result = await service.searchByName('Santa');
       expect(result).toEqual([mockFarm]);
       expect(farmRepository.find).toHaveBeenCalledWith({
-        where: { name: expect.any(Object) },
+        where: { name: Like('%Santa%') },
       });
     });
   });
