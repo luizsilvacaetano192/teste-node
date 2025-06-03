@@ -69,9 +69,7 @@ export class ProducersController {
       },
     },
   })
-  async create(
-    @Body() createProducerDto: CreateProducerDto,
-  ): Promise<ProducerResponseDto> {
+  async create(@Body() createProducerDto: CreateProducerDto): Promise<ProducerResponseDto> {
     const producer = await this.producersService.create(createProducerDto);
     return new ProducerResponseDto(producer);
   }
@@ -99,7 +97,7 @@ export class ProducersController {
     });
 
     return {
-      items: result.items.map((producer) => new ProducerResponseDto(producer)),
+      items: result.items.map((p) => new ProducerResponseDto(p)),
       meta: result.meta,
       links: result.links,
     };
@@ -215,11 +213,9 @@ export class ProducersController {
     description: 'Lista de produtores encontrados',
     type: [ProducerResponseDto],
   })
-  async searchByName(
-    @Query('name') name: string,
-  ): Promise<ProducerResponseDto[]> {
+  async searchByName(@Query('name') name: string): Promise<ProducerResponseDto[]> {
     const results = await this.producersService.searchByName(name);
-    return results.map((producer) => new ProducerResponseDto(producer));
+    return results.map((p) => new ProducerResponseDto(p));
   }
 
   @Get('search/by-document-type/:type')
@@ -238,11 +234,9 @@ export class ProducersController {
     description: 'Lista de produtores filtrados',
     type: [ProducerResponseDto],
   })
-  async findByDocumentType(
-    @Param('type') type: DocumentType,
-  ): Promise<ProducerResponseDto[]> {
+  async findByDocumentType(@Param('type') type: DocumentType): Promise<ProducerResponseDto[]> {
     const results = await this.producersService.findByDocumentType(type);
-    return results.map((producer) => new ProducerResponseDto(producer));
+    return results.map((p) => new ProducerResponseDto(p));
   }
 
   @Get('search/by-document')
@@ -273,6 +267,6 @@ export class ProducersController {
     @Query('number') number: string,
   ): Promise<ProducerResponseDto[]> {
     const results = await this.producersService.findByDocument(type, number);
-    return results.map((producer) => new ProducerResponseDto(producer));
+    return results.map((p) => new ProducerResponseDto(p));
   }
 }

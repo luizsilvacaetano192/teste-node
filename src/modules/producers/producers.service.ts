@@ -2,7 +2,6 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, ILike } from 'typeorm';
@@ -16,7 +15,6 @@ import { LoggerService } from '../../shared/logger/logger.service';
 
 @Injectable()
 export class ProducersService {
-
   constructor(
     @InjectRepository(Producer)
     private readonly producerRepository: Repository<Producer>,
@@ -162,26 +160,30 @@ export class ProducersService {
   async findOne(id: string): Promise<ProducerResponseDto> {
     this.logger.log(`findOne chamado com ID: ${id}`);
 
-    const producer = await this.producerRepository
-      .createQueryBuilder('producer')
-      .leftJoinAndSelect('producer.farms', 'farm')
-      .where('producer.id = :id', { id })
-      .getOne();
+    try {
+      const producer = await this.producerRepository
+        .createQueryBuilder('producer')
+        .leftJoinAndSelect('producer.farms', 'farm')
+        .where('producer.id = :id', { id })
+        .getOne();
 
-    if (!producer) {
-      this.logger.warn(`Produtor com id ${id} não encontrado`);
-      throw new NotFoundException(`Produtor com id ${id} não encontrado`);
+      if (!producer) {
+        this.logger.warn(`Produtor com id ${id} não encontrado`);
+        throw new NotFoundException(`Produtor com id ${id} não encontrado`);
+      }
+
+      this.logger.log(`Produtor encontrado: ${producer.name} com ${producer.farms?.length || 0} fazenda(s)`);
+
+      const result = new ProducerResponseDto(producer);
+      this.logger.log(`DTO retornado: ${JSON.stringify(result)}`);
+
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Erro ao buscar produtor: ${error.message}`, error.stack);
+      throw error;
     }
-
-    this.logger.log(`Produtor encontrado: ${producer.name} com ${producer.farms?.length || 0} fazenda(s)`);
-
-    const result = new ProducerResponseDto(producer);
-    this.logger.log(`DTO retornado: ${JSON.stringify(result)}`);
-
-    return result;
   }
-
-
 
   async update(id: string, updateProducerDto: UpdateProducerDto): Promise<Producer> {
     this.logger.log(`Atualizando produtor: ${id}`);
@@ -199,10 +201,11 @@ export class ProducersService {
       throw new BadRequestException('CNPJ inválido');
     }
 
+    // Verifica se o documento já está sendo usado por outro produtor
     const exists = await this.producerRepository.findOne({
       where: {
         documentNumber,
-        id: Not(id),
+        id: Not(id), // Exclui o próprio produtor da verificação
       },
     });
 
@@ -211,6 +214,7 @@ export class ProducersService {
       throw new BadRequestException('Documento já cadastrado para outro produtor');
     }
 
+    // Atualiza os campos
     Object.assign(producer, updateProducerDto, { documentNumber });
     const updatedProducer = await this.producerRepository.save(producer);
     await this.redisService.set(`producer:${id}`, JSON.stringify(updatedProducer));

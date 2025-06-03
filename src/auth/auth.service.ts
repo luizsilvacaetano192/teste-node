@@ -23,7 +23,7 @@ export class AuthService {
 
     const access_token = await this.jwtService.signAsync(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-      expiresIn: '15m',
+      expiresIn: '1d',
     });
 
     const refresh_token = await this.jwtService.signAsync(payload, {
@@ -31,7 +31,6 @@ export class AuthService {
       expiresIn: '7d',
     });
 
-    // opcional: você pode salvar o refresh_token no banco
     await this.usersService.updateRefreshToken(user.id, refresh_token);
 
     return { access_token, refresh_token };

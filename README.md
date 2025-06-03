@@ -8,6 +8,7 @@ API backend para gerenciamento de produtores rurais, utilizando Node.js, Postgre
 
 - [Node.js 18 (Alpine)](https://nodejs.org/)
 - [NestJS](https://nestjs.com/)
+- [TypeORM (ORM com PostgreSQL)]
 - [PostgreSQL 13 (Alpine)](https://www.postgresql.org/)
 - [Redis 7 (Alpine)](https://redis.io/)
 - [Docker](https://www.docker.com/)
@@ -37,12 +38,12 @@ Isso criará o arquivo .env com todas as variáveis base já definidas.
 
 📖 Explicação das Variáveis .env
 Variável	Função
-DB_HOST	Nome do serviço do banco definido no docker-compose.yml (não usar localhost)
-DB_PORT	Porta padrão do PostgreSQL (5432)
+DB_HOST	    Nome do serviço do banco definido no docker-compose.yml (não usar localhost)
+DB_PORT	    Porta padrão do PostgreSQL (5432)
 DB_USERNAME	Usuário do banco de dados
 DB_PASSWORD	Senha do banco de dados
 DB_DATABASE	Nome do banco que será criado no container
-PORT	Porta onde a API será executada no container
+PORT	    Porta onde a API será executada no container
 NODE_ENV	Ambiente de execução: development, production, etc.
 REDIS_HOST	Nome do serviço Redis no Docker
 REDIS_PORT	Porta padrão do Redis

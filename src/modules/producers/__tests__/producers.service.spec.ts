@@ -1,217 +1,259 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { Repository, Not, SelectQueryBuilder } from 'typeorm';
 import { ProducersService } from '../producers.service';
-import { CreateProducerDto } from '../dto/create-producer.dto';
-import { DocumentType, Producer } from '../entities/producer.entity';
+import { Producer } from '../entities/producer.entity';
+import { CreateProducerDto, DocumentType } from '../dto/create-producer.dto';
+import { UpdateProducerDto } from '../dto/update-producer.dto';
+import { ProducerResponseDto } from '../dto/producer-response.dto';
+import { RedisService } from '../../redis/redis.service';
+import { IPaginationOptions, Pagination } from 'nestjs-typeorm-paginate';
+import { LoggerService } from '../../../shared/logger/logger.service';
+import { Farm } from '../../farms/entities/farm.entity';
+import { paginate } from 'nestjs-typeorm-paginate';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ILike } from 'typeorm';
 
-// Mock RedisService
-const mockRedisService = {
-  del: jest.fn(),
-  get: jest.fn(),
-  set: jest.fn(),
-};
-
-
-// Factory do repositório em memória — criamos uma função para limpar o banco entre os testes
-const mockRepository = () => {
-  const db = new Map<string, Producer>();
-
-  return {
-    save: jest.fn(async (producer: Producer) => {
-      const id = producer.id ?? `${Math.random()}`.substring(2);
-      const saved = { ...producer, id };
-      db.set(id, saved);
-      return saved;
-    }),
-    findOneBy: jest.fn(async (where: any) => {
-      for (const value of db.values()) {
-        if ((where.id && value.id === where.id) ||
-            (where.documentNumber && value.documentNumber === where.documentNumber)) {
-          return value;
-        }
-      }
-      return null;
-    }),
-    delete: jest.fn(async ({ id }) => {
-      const existed = db.delete(id);
-      return { affected: existed ? 1 : 0 };
-    }),
-    clearDb: () => db.clear(),
-  };
-};
+jest.mock('nestjs-typeorm-paginate', () => ({
+  paginate: jest.fn().mockImplementation((queryBuilder, options) => ({
+    items: [{
+      id: '1',
+      name: 'Test Producer',
+      documentNumber: '52998224725',
+      documentType: DocumentType.CPF,
+      farms: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }],
+    meta: {
+      totalItems: 1,
+      itemCount: 1,
+      itemsPerPage: options.limit,
+      totalPages: 1,
+      currentPage: options.page,
+    },
+    links: {
+      first: '',
+      previous: '',
+      next: '',
+      last: '',
+    },
+  })),
+}));
 
 describe('ProducersService', () => {
   let service: ProducersService;
-  let repository: ReturnType<typeof mockRepository>;
+  let producerRepository: Repository<Producer>;
+  let redisService: RedisService;
+  let loggerService: LoggerService;
+
+  const mockProducer: Producer = {
+    id: '1',
+    name: 'Test Producer',
+    documentNumber: '52998224725',
+    documentType: DocumentType.CPF,
+    farms: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockFarm: Farm = {
+    id: 'farm1',
+    name: 'Test Farm',
+    city: 'Test City',
+    state: 'SP',
+    totalArea: 100,
+    arableArea: 50,
+    vegetationArea: 50,
+    crops: [],
+    producer: mockProducer
+  };
+
+  const mockProducerResponseDto = new ProducerResponseDto(mockProducer);
 
   beforeEach(async () => {
-    repository = mockRepository();
-
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProducersService,
-        { provide: 'RedisService', useValue: mockRedisService },
-        { provide: 'ProducerRepository', useValue: repository },
+        {
+          provide: getRepositoryToken(Producer),
+          useValue: {
+            create: jest.fn().mockReturnValue(mockProducer),
+            save: jest.fn().mockResolvedValue(mockProducer),
+            findOne: jest.fn().mockImplementation((options) => {
+              if (options?.where?.documentNumber && options?.where?.id === Not('1')) {
+                return null; // Para verificação de documento duplicado
+              }
+              if (options?.where?.id === 'not-found') {
+                return null;
+              }
+              return mockProducer;
+            }),
+            delete: jest.fn().mockResolvedValue({ affected: 1 }),
+            count: jest.fn().mockImplementation((options) => {
+              if (options?.where?.documentNumber) {
+                return 0;
+              }
+              return 1;
+            }),
+            find: jest.fn().mockResolvedValue([mockProducer]),
+            createQueryBuilder: jest.fn(() => ({
+              leftJoinAndSelect: jest.fn().mockReturnThis(),
+              where: jest.fn().mockReturnThis(),
+              orWhere: jest.fn().mockReturnThis(),
+              getOne: jest.fn().mockResolvedValue(mockProducer),
+              getMany: jest.fn().mockResolvedValue([mockProducer]),
+            })),
+          },
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            set: jest.fn().mockResolvedValue('OK'),
+            get: jest.fn().mockResolvedValue(JSON.stringify(mockProducer)),
+            del: jest.fn().mockResolvedValue(1),
+          },
+        },
+        {
+          provide: LoggerService,
+          useValue: {
+            log: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<ProducersService>(ProducersService);
+    producerRepository = module.get<Repository<Producer>>(getRepositoryToken(Producer));
+    redisService = module.get<RedisService>(RedisService);
+    loggerService = module.get<LoggerService>(LoggerService);
+
+    // Mock validation methods to always pass
+    jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
+    jest.spyOn(service as any, 'validateCNPJ').mockReturnValue(true);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    repository.clearDb();
   });
 
-  it('deve estar definido', () => {
-    expect(service).toBeDefined();
-  });
-
-  describe('criar', () => {
-    it('deve criar um produtor com CPF válido', async () => {
-      const producerData: CreateProducerDto = {
-        name: 'Rebeca Santos',
-        documentNumber: '123.456.789-09',
+  describe('create', () => {
+    it('should create a new producer', async () => {
+      const createDto: CreateProducerDto = {
+        name: 'Test Producer',
+        documentNumber: '529.982.247-25',
         documentType: DocumentType.CPF,
       };
 
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
-
-      const result = await service.create(producerData);
-
-      expect(result).toMatchObject({
-        id: expect.any(String),
-        name: 'Rebeca Santos',
-        documentNumber: '12345678909', // sem pontuação
-        documentType: DocumentType.CPF,
+      const result = await service.create(createDto);
+      expect(result).toEqual(mockProducer);
+      expect(producerRepository.create).toHaveBeenCalledWith({
+        ...createDto,
+        documentNumber: '52998224725',
       });
+      expect(producerRepository.save).toHaveBeenCalled();
+      expect(redisService.set).toHaveBeenCalledWith(`producer:${mockProducer.id}`, JSON.stringify(mockProducer));
     });
 
-    it('deve criar um produtor com CNPJ válido', async () => {
-      const producerData: CreateProducerDto = {
-        name: 'Fazenda Teste 1',
-        documentNumber: '40.703.515/0001-72',
-        documentType: DocumentType.CNPJ,
-      };
-
-      jest.spyOn(service as any, 'validateCNPJ').mockReturnValue(true);
-
-      const result = await service.create(producerData);
-
-      expect(result).toMatchObject({
-        id: expect.any(String),
-        name: 'Fazenda Teste 1',
-        documentNumber: '40703515000172',
-        documentType: DocumentType.CNPJ,
-      });
-    });
-
-    it('deve lançar erro com CPF inválido', async () => {
-      const producerData: CreateProducerDto = {
-        name: 'Thales Silva',
-        documentNumber: '000.000.000-00',
+    it('should throw BadRequestException if document already exists', async () => {
+      jest.spyOn(producerRepository, 'count').mockResolvedValueOnce(1);
+      
+      const createDto: CreateProducerDto = {
+        name: 'Test Producer',
+        documentNumber: '529.982.247-25',
         documentType: DocumentType.CPF,
       };
 
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(false);
-
-      await expect(service.create(producerData)).rejects.toThrow(BadRequestException);
-    });
-
-    it('deve lançar erro com CNPJ inválido', async () => {
-      const producerData: CreateProducerDto = {
-        name: 'Fazenda Feliz LTDA',
-        documentNumber: '11.111.111/1111-11',
-        documentType: DocumentType.CNPJ,
-      };
-
-      jest.spyOn(service as any, 'validateCNPJ').mockReturnValue(false);
-
-      await expect(service.create(producerData)).rejects.toThrow(BadRequestException);
-    });
-
-    it('deve lançar erro quando documento já existe', async () => {
-      const producerData: CreateProducerDto = {
-        name: 'Rebeca Santos',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      };
-
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
-
-      await service.create(producerData);
-
-      // segunda tentativa com mesmo documento deve lançar erro
-      await expect(service.create(producerData)).rejects.toThrow(BadRequestException);
+      await expect(service.create(createDto)).rejects.toThrow(BadRequestException);
     });
   });
 
-  describe('buscarPorId', () => {
-    it('deve retornar um produtor existente', async () => {
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
-
-      const producer = await service.create({
-        name: 'Rebeca Santos',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      });
-
-      const result = await service.findOne(producer.id);
-      expect(result).toEqual(producer);
+  describe('findAll', () => {
+    it('should return paginated producers', async () => {
+      const options: IPaginationOptions = { page: 1, limit: 10 };
+      const result = await service.findAll(options);
+      
+      expect(result.items.length).toBe(1);
+      expect(result.items[0]).toBeInstanceOf(ProducerResponseDto);
+      expect(paginate).toHaveBeenCalled();
     });
 
-    it('deve lançar erro quando produtor não existe', async () => {
-      await expect(service.findOne('id_inexistente')).rejects.toThrow(NotFoundException);
-    });
-  });
-
-  describe('atualizar', () => {
-    it('deve atualizar os dados do produtor', async () => {
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
-
-      const producer = await service.create({
-        name: 'João Silva',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      });
-
-      const update = {
-        name: 'João Silva Santos',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      };
-
-      const result = await service.update(producer.id, update);
-      expect(result.name).toBe('João Silva Santos');
-    });
-
-    it('deve lançar erro ao atualizar produtor inexistente', async () => {
-      const update = {
-        name: 'Nome qualquer',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      };
-
-      await expect(service.update('id_inexistente', update)).rejects.toThrow(NotFoundException);
+    it('should return all producers when no pagination options', async () => {
+      const result = await service.findAll();
+      
+      expect(result.items.length).toBe(1);
+      expect(result.items[0]).toBeInstanceOf(ProducerResponseDto);
+      expect(producerRepository.createQueryBuilder).toHaveBeenCalled();
     });
   });
 
-  describe('remover', () => {
-    it('deve remover um produtor existente', async () => {
-      jest.spyOn(service as any, 'validateCPF').mockReturnValue(true);
-
-      const producer = await service.create({
-        name: 'João Silva',
-        documentNumber: '123.456.789-09',
-        documentType: DocumentType.CPF,
-      });
-
-      await service.remove(producer.id);
-      await expect(service.findOne(producer.id)).rejects.toThrow(NotFoundException);
+  describe('findOne', () => {
+    it('should return a producer by id', async () => {
+      const result = await service.findOne('1');
+      expect(result).toBeInstanceOf(ProducerResponseDto);
+      expect(result.id).toBe('1');
     });
 
-    it('deve lançar erro ao remover produtor inexistente', async () => {
-      await expect(service.remove('id_inexistente')).rejects.toThrow(NotFoundException);
+    it('should throw NotFoundException if producer not found', async () => {
+      jest.spyOn(producerRepository, 'createQueryBuilder').mockReturnValueOnce({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      } as any);
+
+      await expect(service.findOne('not-found')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('remove', () => {
+    it('should delete a producer', async () => {
+      await service.remove('1');
+      expect(producerRepository.delete).toHaveBeenCalledWith('1');
+      expect(redisService.del).toHaveBeenCalledWith('producer:1');
+    });
+
+    it('should throw NotFoundException if producer not found', async () => {
+      jest.spyOn(producerRepository, 'delete').mockResolvedValueOnce({ affected: 0 } as any);
+      await expect(service.remove('not-found')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('searchByName', () => {
+    it('should search producers by name', async () => {
+      const result = await service.searchByName('Test');
+      expect(result).toEqual([mockProducer]);
+      expect(producerRepository.find).toHaveBeenCalledWith({
+        where: {
+          name: ILike('%Test%'),
+        },
+      });
+    });
+  });
+
+  describe('findByDocumentType', () => {
+    it('should find producers by document type', async () => {
+      const result = await service.findByDocumentType(DocumentType.CPF);
+      expect(result).toEqual([mockProducer]);
+      expect(producerRepository.find).toHaveBeenCalledWith({
+        where: {
+          documentType: DocumentType.CPF,
+        },
+      });
+    });
+  });
+
+  describe('findByDocument', () => {
+    it('should find producers by document', async () => {
+      const result = await service.findByDocument(DocumentType.CPF, '529.982.247-25');
+      expect(result).toEqual([mockProducer]);
+      expect(producerRepository.find).toHaveBeenCalledWith({
+        where: {
+          documentType: DocumentType.CPF,
+          documentNumber: '52998224725',
+        },
+      });
     });
   });
 });

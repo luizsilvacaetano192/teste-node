@@ -9,7 +9,6 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { Reflector } from '@nestjs/core';
 
 async function bootstrap() {
-
   const app = await NestFactory.create(AppModule);
 
   const configService = app.get(ConfigService);
@@ -49,6 +48,8 @@ async function bootstrap() {
       'JWT-auth',
     )
     .build();
+
+    
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api', app, document, {

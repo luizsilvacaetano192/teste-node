@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { Producer } from '../../producers/entities/producer.entity';
 import { Crop } from '../../crops/entities/crop.entity';
+import { ApiProperty } from '@nestjs/swagger';
 
 @Entity('farms')
 export class Farm {
@@ -33,8 +34,9 @@ export class Farm {
   vegetationArea: number;
 
   @ManyToOne(() => Producer, (producer) => producer.farms)
-  @JoinColumn({ name: 'producer_id' })
+  @ApiProperty({ type: () => Producer })
   producer: Producer;
+
 
   @OneToMany(() => Crop, (crop) => crop.farm)
   crops: Crop[];
