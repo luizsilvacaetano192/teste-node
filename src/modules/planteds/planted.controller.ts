@@ -29,7 +29,7 @@ import { Pagination } from 'nestjs-typeorm-paginate';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @ApiTags('Culturas Plantadas')
 @Controller('planted-cultures')
 export class PlantedController {

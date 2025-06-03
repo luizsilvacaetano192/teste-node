@@ -9,7 +9,7 @@ import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @ApiTags('Dashboard')
 @Controller('dashboard')
 export class DashboardController {

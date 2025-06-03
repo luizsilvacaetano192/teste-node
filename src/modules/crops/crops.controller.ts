@@ -30,7 +30,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 
 @UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
+@ApiBearerAuth('JWT-auth')
 @ApiTags('Crops')
 @Controller('crops')
 export class CropsController {
@@ -59,7 +59,7 @@ export class CropsController {
         value: {
           name: 'Safra 2017',
           year: '2017',
-          farmId: 1
+          farmId: "uui da farm - f10f0d00-f49d-4ae4-bd2b-b67952cb16a0"
         },
       },
     },
