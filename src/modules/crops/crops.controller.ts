@@ -243,14 +243,14 @@ export class CropsController {
   @ApiQuery({
     name: 'startDate',
     required: true,
-    description: 'Data inicial no formato YYYY-MM-DD',
-    example: '2023-09-01',
+    description: 'Data inicial no formato YYYY',
+    example: '2023',
   })
   @ApiQuery({
     name: 'endDate',
     required: true,
     description: 'Data final no formato YYYY-MM-DD',
-    example: '2023-12-31',
+    example: '2023',
   })
   @ApiQuery({
     name: 'type',

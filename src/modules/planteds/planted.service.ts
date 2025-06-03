@@ -135,32 +135,27 @@ export class PlantedService {
     this.logger.log(`Cultura plantada removida com sucesso: ID ${id}`);
   }
 
-  async findByCropId(cropId: string, pagination?: PaginationOptions): Promise<PlantedResponseDto[]> {
-    this.logger.log(`Buscando culturas plantadas por cropId: ${cropId} com paginação: ${JSON.stringify(pagination)}`);
+  async findByCropId(cropId: string): Promise<PlantedResponseDto[]> {
+    this.logger.log(`Buscando culturas plantadas por cropId: ${cropId}`);
 
     if (!cropId) {
       this.logger.warn('Busca por cropId falhou: cropId ausente');
       throw new BadRequestException('O ID da safra (cropId) é obrigatório.');
     }
 
-    const queryBuilder = this.repository
+    const planteds = await this.repository
       .createQueryBuilder('planted')
       .leftJoinAndSelect('planted.culture', 'culture')
       .leftJoinAndSelect('planted.crop', 'crop')
       .where('planted.cropId = :cropId', { cropId })
-      .orderBy('planted.plantingDate', 'DESC');
+      .orderBy('planted.plantingDate', 'DESC')
+      .getMany();
 
-    if (pagination) {
-      const { page, limit } = pagination;
-      queryBuilder.skip((page - 1) * limit).take(limit);
-    }
-
-    const planteds = await queryBuilder.getMany();
     this.logger.log(`Encontradas ${planteds.length} culturas plantadas para cropId: ${cropId}`);
 
     return planteds.map(this.mapToDto);
   }
-
+  
   private mapToDto(planted: Planted): PlantedResponseDto {
     return {
       id: planted.id,
